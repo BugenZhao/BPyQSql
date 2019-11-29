@@ -1,6 +1,5 @@
 import sys
 import time
-import AppKit
 
 from PyQt5 import QtGui, QtSql, QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSignal, QItemSelection, QFile
@@ -9,42 +8,10 @@ from PyQt5.QtSql import QSqlDatabase
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QMessageBox, QMainWindow, QAction, QInputDialog, \
     QTabWidget, QSplitter, QGridLayout, QTableView, QMenu, QLabel, QLineEdit, QDialogButtonBox, QDialog
 
+from exporter import Exporter
+from database import DataBase
+
 APP_NAME = "BugenPyQ SQL Client"
-
-
-class DataBase:
-    def __init__(self, type: str, name: str = '', info=None):
-        if info is None:
-            info = {}
-        if name == '':
-            name = info['host']
-
-        self.db = None
-        self.type = type
-        self.info = info
-        self.name = name
-        if "port" in info:
-            self.name += ':%d' % self.info['port']
-
-        self.connName = str(hash(type + name))
-
-    def connection(self) -> QSqlDatabase:
-        if self.db is not None:
-            return self.db
-
-        db = QtSql.QSqlDatabase.addDatabase(self.type, self.connName)
-        if self.type == 'QSQLITE':
-            db.setDatabaseName(self.name)
-        elif self.type == 'QMYSQL' or self.type == 'QPSQL':
-            db.setHostName(self.info['host'])
-            db.setPort(self.info['port'])
-            db.setUserName(self.info['user'])
-            db.setPassword(self.info['pswd'])
-            db.setDatabaseName(self.info['dbNm'])
-
-        db.open()
-        self.db = db
-        return self.db
 
 
 class MainUI(QMainWindow):
@@ -422,34 +389,6 @@ class TableView(QTableView):
         if self.model is None:
             return
         Exporter().exportCsv(self, self.model)
-
-
-class Exporter():
-    def exportCsv(self, parent: QWidget, model: QtCore.QAbstractTableModel):
-        csvTexts = []
-        rows = model.rowCount()
-        cols = model.columnCount()
-
-        headers = []
-        for j in range(cols):
-            headers.append(str(model.headerData(j, Qt.Horizontal)))
-        csvTexts.append(','.join(headers))
-        csvTexts.append('\n')
-
-        for i in range(rows):
-            rowTexts = []
-            for j in range(cols):
-                rowTexts.append(str(model.data(model.index(i, j))))
-            csvTexts.append(','.join(rowTexts))
-            csvTexts.append('\n')
-
-        csvText = ''.join(csvTexts)
-
-        filename, _ = QtWidgets.QFileDialog.getSaveFileName(parent, 'Export to CSV', '.', '*.csv')
-        csv = QFile(filename)
-        if csv.open(csv.WriteOnly | csv.Truncate):
-            csv.write(bytes(csvText, encoding='utf8'))
-            csv.close()
 
 
 class QueryView(QWidget):
