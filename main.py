@@ -1,21 +1,24 @@
 import sys
 import time
 
-from PyQt5 import QtGui, QtSql, QtWidgets, QtCore
-from PyQt5.QtCore import Qt, pyqtSignal, QItemSelection, QFile
-from PyQt5.QtGui import QKeySequence, QIntValidator
-from PyQt5.QtSql import QSqlDatabase
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QMessageBox, QMainWindow, QAction, QInputDialog, \
-    QTabWidget, QSplitter, QGridLayout, QTableView, QMenu, QLabel, QLineEdit, QDialogButtonBox, QDialog
+from PyQt5 import QtGui
+from PyQt5 import QtSql, QtWidgets
+from PyQt5.QtCore import Qt
+from PyQt5.QtCore import pyqtSignal, QItemSelection
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QApplication, QMessageBox, QMainWindow, QTabWidget
+from PyQt5.QtWidgets import QSplitter, QHeaderView
+from PyQt5.QtWidgets import QWidget, QPushButton, QAction, QGridLayout, QTableView
 
+from connectionDialog import ConnectionDialog
+from database import Database
 from exporter import Exporter
-from database import DataBase
 
 APP_NAME = "BugenPyQ SQL Client"
 
 
 class MainUI(QMainWindow):
-    connectedSignal = pyqtSignal([DataBase])
+    connectedSignal = pyqtSignal([Database])
     disconnectedSignal = pyqtSignal()
 
     def __init__(self):
@@ -27,7 +30,9 @@ class MainUI(QMainWindow):
         self.model = None
 
         self.tabs = QTabWidget(self)
-        self.tab1 = DataBaseView(self)
+        self.tab1 = DatabaseView(self)
+        self.connectedSignal.connect(self.tab1.updateDbView)
+        self.disconnectedSignal.connect(self.tab1.clear)
         self.tab2 = QueryView(self)
         self.tabs.addTab(self.tab1, "Database")
         self.tabs.addTab(self.tab2, "Query")
@@ -125,7 +130,7 @@ class MainUI(QMainWindow):
             filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Create an SQLite database', '.', '*.sqlite')
             if filename.strip() != '':
                 print(filename)
-                self.db = DataBase("QSQLITE", name=filename)
+                self.db = Database("QSQLITE", name=filename)
                 self.db.connection()
 
                 if self.db.connection().isOpen():
@@ -150,7 +155,7 @@ class MainUI(QMainWindow):
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open SQLite file', '.', '*.sqlite')
         if filename.strip() == '':
             return
-        db = DataBase("QSQLITE", name=filename)
+        db = Database("QSQLITE", name=filename)
         db.connection()
 
         if db.connection().isOpen():
@@ -161,7 +166,7 @@ class MainUI(QMainWindow):
         if self.db is not None:
             self.disconnectedSignal.emit()
 
-        dialog = ConnectionDialog(type, self)
+        dialog = ConnectionDialog(type)
         dialog.exec_()
         db = dialog.getDatabase()
         if db is None:
@@ -190,91 +195,15 @@ class MainUI(QMainWindow):
                 event.ignore()
 
 
-class ConnectionDialog(QDialog):
-    def __init__(self, type: str, mainUI: MainUI):
-        super().__init__()
-        self.type = type
-        self.mainUI = mainUI
-
-        hostLabel = QLabel('Server name:')
-        portLabel = QLabel('Server port:')
-        userLabel = QLabel('Username:')
-        pswdLabel = QLabel('Password:')
-        dbNmLabel = QLabel('Database:')
-
-        self.hostEdit = QLineEdit('localhost')
-        self.portEdit = QLineEdit()
-        self.portEdit.setValidator(QIntValidator(1, 65535, self))
-        self.userEdit = QLineEdit()
-        self.pswdEdit = QLineEdit()
-        self.pswdEdit.setEchoMode(self.pswdEdit.Password)
-        self.dbNmEdit = QLineEdit()
-
-        hostLabel.setBuddy(self.hostEdit)
-        portLabel.setBuddy(self.portEdit)
-        userLabel.setBuddy(self.userEdit)
-        pswdLabel.setBuddy(self.pswdEdit)
-        dbNmLabel.setBuddy(self.dbNmEdit)
-
-        self.connectBtn = QPushButton('Connect')
-        self.connectBtn.setDefault(True)
-        cancelBtn = QPushButton('Cancel')
-        buttonBox = QDialogButtonBox()
-        buttonBox.addButton(self.connectBtn, buttonBox.ActionRole)
-        buttonBox.addButton(cancelBtn, buttonBox.RejectRole)
-
-        layout = QGridLayout()
-        layout.addWidget(hostLabel, 0, 0)
-        layout.addWidget(self.hostEdit, 0, 1)
-        layout.addWidget(portLabel, 1, 0)
-        layout.addWidget(self.portEdit, 1, 1, )
-        layout.addWidget(userLabel, 2, 0)
-        layout.addWidget(self.userEdit, 2, 1)
-        layout.addWidget(pswdLabel, 3, 0)
-        layout.addWidget(self.pswdEdit, 3, 1)
-        layout.addWidget(dbNmLabel, 4, 0)
-        layout.addWidget(self.dbNmEdit, 4, 1)
-        layout.addWidget(buttonBox, 6, 1)
-        self.setLayout(layout)
-
-        self.userEdit.setFocus()
-
-        cancelBtn.clicked.connect(self.close)
-        self.connectBtn.clicked.connect(self.connect)
-
-        if type == 'QPSQL':
-            self.setWindowTitle('Connect to PostgreSQL')
-            self.portEdit.setText('5432')
-            self.userEdit.setText('postgres')
-            self.dbNmEdit.setText('postgres')
-        elif type == 'QMYSQL':
-            self.setWindowTitle('Connect to MySQL')
-            self.portEdit.setText('3306')
-
-        self.database = None
-
-    def connect(self):
-        self.database = DataBase(self.type, info={
-            'host': self.hostEdit.text(),
-            'port': int(self.portEdit.text()),
-            'user': self.userEdit.text(),
-            'pswd': self.pswdEdit.text(),
-            'dbNm': self.dbNmEdit.text()
-        })
-        self.close()
-
-    def getDatabase(self) -> DataBase:
-        return self.database
-
-
-class DataBaseView(QSplitter):
-    def __init__(self, mainUI: MainUI):
+class DatabaseView(QSplitter):
+    def __init__(self, parent: MainUI):
         super().__init__()
 
         self.db = None
 
-        self.tableListView = TableListView(mainUI)
-        self.tableView = TableView(mainUI)
+        self.tableListView = TableListView(parent)
+        self.tableView = TableView(parent)
+        self.tableView.statusBarMessageSignal.connect(parent.statusBar().showMessage)
 
         self.addWidget(self.tableListView)
         self.addWidget(self.tableView)
@@ -283,15 +212,12 @@ class DataBaseView(QSplitter):
         self.setStretchFactor(0, 1)
         self.setStretchFactor(1, 3)
 
-        mainUI.connectedSignal.connect(self.updateDbView)
-        mainUI.disconnectedSignal.connect(self.clear)
-
     def clear(self):
         self.db = None
         self.tableView.clear()
         self.tableListView.clear()
 
-    def updateDbView(self, db: DataBase):
+    def updateDbView(self, db: Database):
         self.db = db
         self.tableListView.updateDb(db)
         if self.tableView.model is not None:
@@ -301,9 +227,9 @@ class DataBaseView(QSplitter):
             lambda selected, _: self.tableView.updateTable(self.db, selected))
 
 
-class TableListView(QtWidgets.QListView):
-    def __init__(self, mainUI: MainUI):
-        super().__init__()
+class TableListView(QtWidgets.QTableView):
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
         self.model = None
         self.setSelectionMode(self.SingleSelection)
 
@@ -312,7 +238,7 @@ class TableListView(QtWidgets.QListView):
             self.model.clear()
             self.model = None
 
-    def updateDb(self, db: DataBase):
+    def updateDb(self, db: Database):
         self.model = QtSql.QSqlQueryModel()
         self.setModel(self.model)
         if db.type == 'QSQLITE':
@@ -334,13 +260,16 @@ class TableListView(QtWidgets.QListView):
                 "ORDER BY tablename;",
                 db=db.connection())
         self.model.query()
+        self.model.setHeaderData(0, Qt.Horizontal, "Table")
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
 
 class TableView(QTableView):
-    def __init__(self, mainUI: MainUI):
+    statusBarMessageSignal = pyqtSignal([str, int])
+
+    def __init__(self, parent: QWidget):
         super().__init__()
         self.model = None
-        self.mainUI = mainUI
 
         exportAction = QAction("Export to CSV")
         exportAction.triggered.connect(self.exportCsv)
@@ -352,22 +281,23 @@ class TableView(QTableView):
             self.model.clear()
             self.model = None
 
-    def doUpdateTable(self, db: DataBase, tableName: str):
-        if db.type == 'QPSQL':
-            self.model = QtSql.QSqlQueryModel()
-            self.setModel(self.model)
-            self.model.setQuery('SELECT * FROM %s' % tableName, db=db.connection())
-            self.model.query()
-            print('postgres: ', self.model.lastError().text())
-            return
+    def doUpdateTable(self, db: Database, tableName: str):
+        # if db.type == 'QPSQL':
+        #     self.model = QtSql.QSqlQueryModel()
+        #     self.setModel(self.model)
+        #     self.model.setQuery('SELECT * FROM %s' % tableName, db=db.connection())
+        #     self.model.query()
+        #     print('postgres: ', self.model.lastError().text())
+        #     return
 
         self.model = QtSql.QSqlTableModel(db=db.connection())
         self.model.setEditStrategy(QtSql.QSqlTableModel.OnManualSubmit)
         self.setModel(self.model)
         self.model.setTable(tableName)
         self.model.select()
+        self.resizeColumnsToContents()
 
-    def updateTable(self, db: DataBase, selected: QItemSelection):
+    def updateTable(self, db: Database, selected: QItemSelection):
         index = selected.indexes()[0]
         tableName = selected.indexes()[0].model().data(index)
         print(tableName)
@@ -378,10 +308,10 @@ class TableView(QTableView):
             ret = self.model.submitAll()
             if not ret:
                 raise Exception
-            self.mainUI.statusBar().showMessage("Submit success", 1000)
+            self.statusBarMessageSignal.emit("Submit success", 1000)
             print("Submit success")
         except:
-            self.mainUI.statusBar().showMessage("Submit failed", 1000)
+            self.statusBarMessageSignal.emit("Submit failed", 1000)
             print("Submit failed")
         # self.mainUI.refresh()
 
@@ -456,7 +386,7 @@ class QueryView(QWidget):
         self.mainUI.statusBar().showMessage(message, 8000)
         # print(self.model.lastError().type())
 
-    def updateQueryView(self, db: DataBase):
+    def updateQueryView(self, db: Database):
         self.db = db
         self.queryInput.setPlainText('SELECT * FROM ')
         if self.resultTable.model() is not None:

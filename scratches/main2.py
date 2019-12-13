@@ -1,17 +1,12 @@
-import sys
 import time
-import AppKit
 
+from AppKit import *
 from PyQt5 import QtGui, QtSql, QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSignal, QItemSelection, QFile
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtSql import QSqlDatabase
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QMessageBox, QMainWindow, QAction, QInputDialog, \
-    QTabWidget, QSplitter, QGridLayout, QTableView, QMenu, QMacCocoaViewContainer
-
-import objc
-from AppKit import *
-import Foundation
+    QTabWidget, QSplitter, QGridLayout, QTableView, QMacCocoaViewContainer
 
 
 class DataBase:

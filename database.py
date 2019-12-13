@@ -2,7 +2,7 @@ from PyQt5 import QtSql
 from PyQt5.QtSql import QSqlDatabase
 
 
-class DataBase:
+class Database:
     def __init__(self, type: str, name: str = '', info=None):
         if info is None:
             info = {}

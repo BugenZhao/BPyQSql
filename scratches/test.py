@@ -1,10 +1,6 @@
-import sys
-
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QMainWindow, QMacCocoaViewContainer, QApplication, QPushButton
-import objc
 from AppKit import *
-import Foundation
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QMainWindow, QMacCocoaViewContainer, QApplication
 
 
 class MainUI(QMainWindow):
