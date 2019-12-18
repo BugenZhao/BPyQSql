@@ -1,18 +1,17 @@
 import sys
-import time
 
 from PyQt5 import QtGui
-from PyQt5 import QtSql, QtWidgets
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal, QItemSelection
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSignal, QSize
 from PyQt5.QtGui import QKeySequence
+from PyQt5.QtSql import QSql
+from PyQt5.QtWidgets import QAction, QStyle, QHBoxLayout, QWidget
 from PyQt5.QtWidgets import QApplication, QMessageBox, QMainWindow, QTabWidget
-from PyQt5.QtWidgets import QSplitter, QHeaderView
-from PyQt5.QtWidgets import QWidget, QPushButton, QAction, QGridLayout, QTableView
 
 from connectionDialog import ConnectionDialog
 from database import Database
-from exporter import Exporter
+from databaseView import DatabaseView
+from queryView import QueryView
 
 APP_NAME = "BugenPyQ SQL Client"
 
@@ -23,36 +22,46 @@ class MainUI(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.resize(800, 600)
+        self.resize(1000, 600)
 
         self.dbName = None
         self.db = None
-        self.model = None
 
         self.databaseView = DatabaseView(self)
         self.connectedSignal.connect(self.databaseView.updateDbView)
         self.disconnectedSignal.connect(self.databaseView.clear)
+        self.databaseView.statusBarMessageSignal.connect(self.statusBar().showMessage)
 
         self.queryView = QueryView(self)
         self.connectedSignal.connect(self.queryView.updateQueryView)
         self.disconnectedSignal.connect(self.queryView.clear)
         self.connectedSignal.connect(lambda: self.queryView.setBzEnabled(True))
         self.disconnectedSignal.connect(lambda: self.queryView.setBzEnabled(False))
+        self.queryView.statusBarMessageSignal.connect(self.statusBar().showMessage)
 
         self.tabs = QTabWidget(self)
         self.tabs.addTab(self.databaseView, "Database")
         self.tabs.addTab(self.queryView, "Query")
-        self.setCentralWidget(self.tabs)
-        self.setContentsMargins(0, 10, 0, 0)
 
-        self.openSqliteAction = QAction("&Open SQLite...", self)
+        window = QWidget(self)
+        layout = QHBoxLayout(window)
+        layout.addWidget(self.tabs)
+        layout.setContentsMargins(2, 8, 2, 2)
+        window.setLayout(layout)
+        self.setCentralWidget(window)
+
+        toolBar = self.addToolBar("Main")
+        toolBar.setIconSize(QSize(24, 24))
+        self.setUnifiedTitleAndToolBarOnMac(True)
+
+        self.openSqliteAction = QAction("Open &SQLite...", self)
         self.openSqliteAction.setShortcut(QKeySequence.Open)
         self.openSqliteAction.triggered.connect(self.openSqlite)
 
-        self.openPSqlAction = QAction("&Open PostgreSQL...", self)
+        self.openPSqlAction = QAction("Open &PostgreSQL...", self)
         self.openPSqlAction.triggered.connect(lambda: self.openRemote('QPSQL'))
 
-        self.openMySqlAction = QAction("&Open MySQL...", self)
+        self.openMySqlAction = QAction("Open &MySQL...", self)
         self.openMySqlAction.triggered.connect(lambda: self.openRemote('QMYSQL'))
 
         self.newSqliteAction = QAction("&New SQLite example", self)
@@ -61,15 +70,18 @@ class MainUI(QMainWindow):
 
         self.submitAction = QAction("&Submit", self)
         self.submitAction.setShortcut(QKeySequence.Save)
-        self.submitAction.triggered.connect(self.databaseView.tableView.modelSubmit)
+        self.submitAction.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogApplyButton))
+        self.submitAction.triggered.connect(self.databaseView.modelSubmit)
 
         self.refreshAction = QAction("&Refresh", self)
         self.refreshAction.setShortcut(QKeySequence.Refresh)
+        self.refreshAction.setIcon(QApplication.style().standardIcon(QStyle.SP_BrowserReload))
         self.refreshAction.triggered.connect(self.refresh)
 
         self.disconnectAction = QAction("&Close connection", self)
         self.disconnectAction.setShortcut(QKeySequence.Close)
-        self.disconnectAction.triggered.connect(lambda: self.prepared(None))
+        self.disconnectAction.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogCancelButton))
+        self.disconnectAction.triggered.connect(self.closeConnection)
 
         self.aboutQtAction = QAction("About Qt", self)
         self.aboutQtAction.triggered.connect(lambda: QtWidgets.QMessageBox.aboutQt(self))
@@ -78,7 +90,8 @@ class MainUI(QMainWindow):
         self.aboutAction.triggered.connect(lambda:
                                            QtWidgets.QMessageBox.about(
                                                self, 'Bugen Zhao',
-                                               'A simple SQL client written in PyQt by Bugen Zhao.'))
+                                               'A simple SQL client written in PyQt by BugenZhao (aka Ziqi Zhao).'
+                                               '\nFor the final project of course CS902.'))
 
         menuBar = self.menuBar()
 
@@ -97,6 +110,11 @@ class MainUI(QMainWindow):
         fileMenu.addAction(self.refreshAction)
         fileMenu.addSeparator()
         fileMenu.addAction(self.disconnectAction)
+
+        toolBar.addAction(self.submitAction)
+        toolBar.addAction(self.refreshAction)
+        toolBar.addSeparator()
+        toolBar.addAction(self.disconnectAction)
 
         helpMenu = menuBar.addMenu("&Help")
         helpMenu.addAction(self.aboutQtAction)
@@ -154,8 +172,8 @@ class MainUI(QMainWindow):
             print(e)
 
     def openSqlite(self):
-        if self.db is not None:
-            self.disconnectedSignal.emit()
+        if not self.closeConnection():
+            return
 
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open SQLite file', '.', '*.sqlite')
         if filename.strip() == '':
@@ -166,10 +184,11 @@ class MainUI(QMainWindow):
         if db.connection().isOpen():
             self.db = db
             self.prepared(self.db.name)
+            print(db.connection().tables(QSql.Tables))
 
     def openRemote(self, type='QPSQL'):
-        if self.db is not None:
-            self.disconnectedSignal.emit()
+        if not self.closeConnection():
+            return
 
         dialog = ConnectionDialog(type)
         dialog.exec_()
@@ -183,6 +202,7 @@ class MainUI(QMainWindow):
         if db.connection().isOpen():
             self.db = db
             self.prepared(self.db.name)
+            print(db.connection().tables(QSql.Tables))
         else:
             self.statusBar().showMessage('Connection to %s failed : %s' % (db.name, db.connection().lastError().text())
                                          , 8000)
@@ -199,209 +219,18 @@ class MainUI(QMainWindow):
             else:
                 event.ignore()
 
-
-class DatabaseView(QSplitter):
-    def __init__(self, parent: MainUI):
-        super().__init__()
-
-        self.db = None
-
-        self.tableListView = TableListView(parent)
-        self.tableView = TableView(parent)
-        self.tableView.statusBarMessageSignal.connect(parent.statusBar().showMessage)
-
-        self.addWidget(self.tableListView)
-        self.addWidget(self.tableView)
-
-        self.setOrientation(Qt.Horizontal)
-        self.setStretchFactor(0, 1)
-        self.setStretchFactor(1, 3)
-
-    def clear(self):
-        self.db = None
-        self.tableView.clear()
-        self.tableListView.clear()
-
-    def updateDbView(self, db: Database):
-        self.db = db
-        self.tableListView.updateDb(db)
-        if self.tableView.model is not None:
-            self.tableView.model.clear()
-        # selectionModel will appear only after model has been set
-        self.tableListView.selectionModel().selectionChanged.connect(
-            lambda selected, _: self.tableView.updateTable(self.db, selected))
-
-
-class TableListView(QtWidgets.QTableView):
-    def __init__(self, parent: QWidget):
-        super().__init__(parent)
-        self.model = None
-        self.setSelectionMode(self.SingleSelection)
-
-    def clear(self):
-        if self.model is not None:
-            self.model.clear()
-            self.model = None
-
-    def updateDb(self, db: Database):
-        self.model = QtSql.QSqlQueryModel()
-        self.setModel(self.model)
-        if db.type == 'QSQLITE':
-            self.model.setQuery(
-                "SELECT name FROM sqlite_master "
-                "WHERE type = 'table' "
-                "ORDER BY name;",
-                db=db.connection())
-        elif db.type == 'QMYSQL':
-            self.model.setQuery(
-                "SELECT TABLE_NAME FROM information_schema.tables "
-                "WHERE TABLE_SCHEMA = 'test' "
-                "ORDER BY TABLE_NAME;",
-                db=db.connection())
-        elif db.type == 'QPSQL':
-            self.model.setQuery(
-                "SELECT tablename FROM pg_tables "
-                "WHERE tablename NOT LIKE 'pg%' AND tablename NOT LIKE 'sql_%' "
-                "ORDER BY tablename;",
-                db=db.connection())
-        self.model.query()
-        self.model.setHeaderData(0, Qt.Horizontal, "Table")
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-
-
-class TableView(QTableView):
-    statusBarMessageSignal = pyqtSignal([str, int])
-
-    def __init__(self, parent: QWidget):
-        super().__init__()
-        self.model = None
-
-        exportAction = QAction("Export to CSV")
-        exportAction.triggered.connect(self.exportCsv)
-        self.addAction(exportAction)
-        self.setContextMenuPolicy(Qt.ActionsContextMenu)
-
-    def clear(self):
-        if self.model is not None:
-            self.model.clear()
-            self.model = None
-
-    def doUpdateTable(self, db: Database, tableName: str):
-        # if db.type == 'QPSQL':
-        #     self.model = QtSql.QSqlQueryModel()
-        #     self.setModel(self.model)
-        #     self.model.setQuery('SELECT * FROM %s' % tableName, db=db.connection())
-        #     self.model.query()
-        #     print('postgres: ', self.model.lastError().text())
-        #     return
-
-        self.model = QtSql.QSqlTableModel(db=db.connection())
-        self.model.setEditStrategy(QtSql.QSqlTableModel.OnManualSubmit)
-        self.setModel(self.model)
-        self.model.setTable(tableName)
-        self.model.select()
-        self.resizeColumnsToContents()
-
-    def updateTable(self, db: Database, selected: QItemSelection):
-        index = selected.indexes()[0]
-        tableName = selected.indexes()[0].model().data(index)
-        print(tableName)
-        self.doUpdateTable(db, tableName)
-
-    def modelSubmit(self):
-        try:
-            ret = self.model.submitAll()
-            if not ret:
-                raise Exception
-            self.statusBarMessageSignal.emit("Submit success", 1000)
-            print("Submit success")
-        except:
-            self.statusBarMessageSignal.emit("Submit failed", 1000)
-            print("Submit failed")
-        # self.mainUI.refresh()
-
-    def exportCsv(self):
-        if self.model is None:
-            return
-        Exporter().exportCsv(self, self.model)
-
-
-class QueryView(QWidget):
-    def __init__(self, mainUI: MainUI):
-        super().__init__()
-        self.queryInput = QtWidgets.QPlainTextEdit()
-        self.queryButton = QPushButton("Query")
-        self.queryButton.clicked.connect(lambda: self.doQuery(self.queryInput.toPlainText()))
-        self.exportButton = QPushButton("Export")
-        self.exportButton.clicked.connect(self.exportCsv)
-        self.resultTable = QTableView()
-
-        exportAction = QAction("Export to CSV")
-        exportAction.triggered.connect(self.exportCsv)
-        self.resultTable.addAction(exportAction)
-
-        self.resultTable.setContextMenuPolicy(Qt.ActionsContextMenu)
-
-        self.layout = QGridLayout(self)
-        self.layout.addWidget(self.queryInput, 0, 0, 2, 1)
-        self.layout.addWidget(self.queryButton, 0, 1)
-        self.layout.addWidget(self.exportButton, 1, 1)
-        self.layout.addWidget(self.resultTable, 2, 0, 1, 2)
-
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setRowStretch(0, 1)
-        self.layout.setRowStretch(2, 5)
-
-        self.model = None
-        self.db = None
-        self.mainUI = mainUI
-
-        mainUI.connectedSignal.connect(self.updateQueryView)
-        mainUI.disconnectedSignal.connect(self.clear)
-        mainUI.connectedSignal.connect(lambda: self.setBzEnabled(True))
-        mainUI.disconnectedSignal.connect(lambda: self.setBzEnabled(False))
-
-    def clear(self):
-        self.db = None
-        self.queryInput.clear()
-        if self.resultTable.model() is not None:
-            self.resultTable.model().removeRows(0, self.resultTable.model().rowCount())
-        self.model = None
-
-    def doQuery(self, query: str):
+    def closeConnection(self) -> bool:
         if self.db is None:
-            return
-        self.model = QtSql.QSqlQueryModel()
-
-        self.resultTable.setModel(self.model)
-        self.model.setQuery(query, db=self.db.connection())
-        t0 = time.time()
-        self.model.query()
-        t1 = time.time()
-        dt = t1 - t0
-        message = 'Done in %.3f s with the result: ' % dt
-        if self.model.lastError().type() == self.model.lastError().NoError:
-            message += 'OK'
+            return True
         else:
-            message += self.model.lastError().text()
-        self.mainUI.statusBar().showMessage(message, 8000)
-        # print(self.model.lastError().type())
-
-    def updateQueryView(self, db: Database):
-        self.db = db
-        self.queryInput.setPlainText('SELECT * FROM ')
-        if self.resultTable.model() is not None:
-            self.resultTable.model().removeRows(0, self.resultTable.model().rowCount())
-
-    def exportCsv(self):
-        if self.model is None:
-            return
-        Exporter().exportCsv(self, self.model)
-
-    def setBzEnabled(self, enabled: bool):
-        self.queryInput.setEnabled(enabled)
-        self.queryButton.setEnabled(enabled)
-        self.exportButton.setEnabled(enabled)
+            message = 'Are you sure you want to close connection %s?' % self.db.name
+            message += '\n\nAll uncommitted changes to %s will be lost!' % self.db.name
+            reply = QMessageBox.question(self, 'Confirm Close', message)
+            if reply == QMessageBox.Yes:
+                self.prepared(None)
+                return True
+            else:
+                return False
 
 
 if __name__ == '__main__':
