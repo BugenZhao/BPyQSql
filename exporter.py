@@ -3,7 +3,7 @@ from PyQt5.QtCore import Qt, QFile
 from PyQt5.QtWidgets import QWidget
 
 
-class Exporter():
+class Exporter:
     def exportCsv(self, parent: QWidget, model: QtCore.QAbstractTableModel):
         csvTexts = []
         rows = model.rowCount()

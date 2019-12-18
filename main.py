@@ -29,13 +29,19 @@ class MainUI(QMainWindow):
         self.db = None
         self.model = None
 
+        self.databaseView = DatabaseView(self)
+        self.connectedSignal.connect(self.databaseView.updateDbView)
+        self.disconnectedSignal.connect(self.databaseView.clear)
+
+        self.queryView = QueryView(self)
+        self.connectedSignal.connect(self.queryView.updateQueryView)
+        self.disconnectedSignal.connect(self.queryView.clear)
+        self.connectedSignal.connect(lambda: self.queryView.setBzEnabled(True))
+        self.disconnectedSignal.connect(lambda: self.queryView.setBzEnabled(False))
+
         self.tabs = QTabWidget(self)
-        self.tab1 = DatabaseView(self)
-        self.connectedSignal.connect(self.tab1.updateDbView)
-        self.disconnectedSignal.connect(self.tab1.clear)
-        self.tab2 = QueryView(self)
-        self.tabs.addTab(self.tab1, "Database")
-        self.tabs.addTab(self.tab2, "Query")
+        self.tabs.addTab(self.databaseView, "Database")
+        self.tabs.addTab(self.queryView, "Query")
         self.setCentralWidget(self.tabs)
         self.setContentsMargins(0, 10, 0, 0)
 
@@ -49,13 +55,13 @@ class MainUI(QMainWindow):
         self.openMySqlAction = QAction("&Open MySQL...", self)
         self.openMySqlAction.triggered.connect(lambda: self.openRemote('QMYSQL'))
 
-        self.newSqliteAction = QAction("&New SQLite", self)
+        self.newSqliteAction = QAction("&New SQLite example", self)
         self.newSqliteAction.setShortcut(QKeySequence.New)
         self.newSqliteAction.triggered.connect(self.createDb)
 
         self.submitAction = QAction("&Submit", self)
         self.submitAction.setShortcut(QKeySequence.Save)
-        self.submitAction.triggered.connect(self.tab1.tableView.modelSubmit)
+        self.submitAction.triggered.connect(self.databaseView.tableView.modelSubmit)
 
         self.refreshAction = QAction("&Refresh", self)
         self.refreshAction.setShortcut(QKeySequence.Refresh)
@@ -126,7 +132,6 @@ class MainUI(QMainWindow):
 
     def createDb(self):
         try:
-            # 调用输入框获取数据库名称
             filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Create an SQLite database', '.', '*.sqlite')
             if filename.strip() != '':
                 print(filename)
@@ -353,12 +358,8 @@ class QueryView(QWidget):
 
         mainUI.connectedSignal.connect(self.updateQueryView)
         mainUI.disconnectedSignal.connect(self.clear)
-        mainUI.connectedSignal.connect(lambda: self.queryInput.setEnabled(True))
-        mainUI.disconnectedSignal.connect(lambda: self.queryInput.setEnabled(False))
-        mainUI.connectedSignal.connect(lambda: self.queryButton.setEnabled(True))
-        mainUI.disconnectedSignal.connect(lambda: self.queryButton.setEnabled(False))
-        mainUI.connectedSignal.connect(lambda: self.exportButton.setEnabled(True))
-        mainUI.disconnectedSignal.connect(lambda: self.exportButton.setEnabled(False))
+        mainUI.connectedSignal.connect(lambda: self.setBzEnabled(True))
+        mainUI.disconnectedSignal.connect(lambda: self.setBzEnabled(False))
 
     def clear(self):
         self.db = None
@@ -396,6 +397,11 @@ class QueryView(QWidget):
         if self.model is None:
             return
         Exporter().exportCsv(self, self.model)
+
+    def setBzEnabled(self, enabled: bool):
+        self.queryInput.setEnabled(enabled)
+        self.queryButton.setEnabled(enabled)
+        self.exportButton.setEnabled(enabled)
 
 
 if __name__ == '__main__':
