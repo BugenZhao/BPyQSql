@@ -1,5 +1,5 @@
 from PyQt5 import QtSql, QtWidgets
-from PyQt5.QtCore import Qt, QItemSelectionModel
+from PyQt5.QtCore import Qt, QItemSelectionModel, QThread
 from PyQt5.QtCore import pyqtSignal, QItemSelection
 from PyQt5.QtWidgets import QSplitter, QHeaderView
 from PyQt5.QtWidgets import QWidget, QAction, QTableView
@@ -39,7 +39,10 @@ class DatabaseView(QSplitter):
         # selectionModel will appear only after model has been set
         self.tableListView.selectionModel().selectionChanged.connect(
             lambda selected, _: self.tableView.updateTable(self.db, selected))
-        self.tableListView.selectionModel().select(self.tableListView.model.index(0, 0), QItemSelectionModel.Select)
+        try:
+            self.tableListView.selectionModel().select(self.tableListView.model.index(0, 0), QItemSelectionModel.Select)
+        except:
+            pass
         self.tableListView.setFocus()
 
     def modelSubmit(self):
@@ -108,7 +111,9 @@ class TableView(QTableView):
         self.setModel(self.model)
         self.model.setTable(tableName)
         self.model.select()
-        self.resizeColumnsToContents()
+        thread = TableSelectThread(self)
+        thread.finished.connect(self.resizeColumnsToContents)
+        thread.start()
 
     def updateTable(self, db: Database, selected: QItemSelection):
         index = selected.indexes()[0]
@@ -126,3 +131,12 @@ class TableView(QTableView):
         if self.model is None:
             return
         Exporter().exportCsv(self, self.model)
+
+
+class TableSelectThread(QThread):
+    def __init__(self, parent: TableView):
+        super().__init__(parent)
+        self.tableView = parent
+
+    def run(self) -> None:
+        self.tableView.model.select()

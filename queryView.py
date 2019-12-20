@@ -1,7 +1,7 @@
 import time
 
 from PyQt5 import QtSql, QtWidgets
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QWidget, QPushButton, QAction, QGridLayout, QTableView
 
@@ -13,13 +13,15 @@ class QueryView(QWidget):
     statusBarMessageSignal = pyqtSignal([str, int])
 
     def __init__(self, parent: QWidget):
-        super().__init__()
+        super().__init__(parent)
         self.queryInput = QtWidgets.QPlainTextEdit()
         self.queryButton = QPushButton("Query")
         self.queryButton.clicked.connect(lambda: self.doQuery(self.queryInput.toPlainText()))
         self.exportButton = QPushButton("Export")
         self.exportButton.clicked.connect(self.exportCsv)
         self.resultTable = QTableView()
+
+        self.queryInput.setPlainText('SELECT * FROM ')
 
         exportAction = QAction("Export to CSV")
         exportAction.triggered.connect(self.exportCsv)
@@ -42,7 +44,6 @@ class QueryView(QWidget):
 
     def clear(self):
         self.db = None
-        self.queryInput.clear()
         if self.resultTable.model() is not None:
             self.resultTable.model().removeRows(0, self.resultTable.model().rowCount())
         self.model = None
@@ -53,23 +54,43 @@ class QueryView(QWidget):
         self.model = QtSql.QSqlQueryModel()
 
         self.resultTable.setModel(self.model)
-        t0 = time.time()
-        self.model.setQuery(query, db=self.db.connection())
-        self.model.query()
-        t1 = time.time()
-        dt = t1 - t0
-        message = 'Done in %.3f s with the result: ' % dt
-        if self.model.lastError().type() == self.model.lastError().NoError:
-            message += 'OK'
-        else:
-            message += self.model.lastError().text()
-        self.statusBarMessageSignal.emit(message, 8000)
-        self.resultTable.resizeColumnsToContents()
-        # print(self.model.lastError().type())
+
+        class QueryThread(QThread):
+            def __init__(self, parent: QueryView):
+                super().__init__(parent)
+                self.queryView = parent
+
+            def run(self) -> None:
+                t0 = time.time()
+                self.queryView.model.setQuery(query, db=self.queryView.db.connection())
+                self.queryView.model.query()
+                t1 = time.time()
+                dt = t1 - t0
+                message = 'Done in %.3f s with the result: ' % dt
+                if self.queryView.model.lastError().type() == self.queryView.model.lastError().NoError:
+                    message += 'OK'
+                else:
+                    message += self.queryView.model.lastError().text()
+
+                self.queryView.statusBarMessageSignal.emit(message, 8000)
+
+        def onQueryFinished():
+            self.resultTable.resizeColumnsToContents()
+            self.exportButton.setEnabled(True)
+            self.queryButton.setEnabled(True)
+
+        def onQueryStarted():
+            self.exportButton.setEnabled(False)
+            self.queryButton.setEnabled(False)
+
+        thread = QueryThread(self)
+        thread.started.connect(onQueryStarted)
+        thread.finished.connect(onQueryFinished)
+
+        thread.start()
 
     def updateQueryView(self, db: Database):
         self.db = db
-        self.queryInput.setPlainText('SELECT * FROM ')
         if self.resultTable.model() is not None:
             self.resultTable.model().removeRows(0, self.resultTable.model().rowCount())
 

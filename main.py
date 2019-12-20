@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import QApplication, QMessageBox, QMainWindow, QTabWidget
 from connectionDialog import ConnectionDialog
 from database import Database
 from databaseView import DatabaseView
-from queryView import QueryView
+from example import EXAMPLE_SQLITE
+from queriesContainer import QueriesContainer
 
 APP_NAME = "BugenPyQ SQL Client"
 
@@ -32,16 +33,16 @@ class MainUI(QMainWindow):
         self.disconnectedSignal.connect(self.databaseView.clear)
         self.databaseView.statusBarMessageSignal.connect(self.statusBar().showMessage)
 
-        self.queryView = QueryView(self)
-        self.connectedSignal.connect(self.queryView.updateQueryView)
-        self.disconnectedSignal.connect(self.queryView.clear)
-        self.connectedSignal.connect(lambda: self.queryView.setBzEnabled(True))
-        self.disconnectedSignal.connect(lambda: self.queryView.setBzEnabled(False))
-        self.queryView.statusBarMessageSignal.connect(self.statusBar().showMessage)
+        self.queriesContainer = QueriesContainer(self)
+        self.connectedSignal.connect(self.queriesContainer.updateQueryView)
+        self.disconnectedSignal.connect(self.queriesContainer.clear)
+        self.connectedSignal.connect(lambda: self.queriesContainer.setBzEnabled(True))
+        self.disconnectedSignal.connect(lambda: self.queriesContainer.setBzEnabled(False))
+        self.queriesContainer.statusBarMessageSignal.connect(self.statusBar().showMessage)
 
         self.tabs = QTabWidget(self)
         self.tabs.addTab(self.databaseView, "Database")
-        self.tabs.addTab(self.queryView, "Query")
+        self.tabs.addTab(self.queriesContainer, "Query")
 
         window = QWidget(self)
         layout = QHBoxLayout(window)
@@ -64,9 +65,13 @@ class MainUI(QMainWindow):
         self.openMySqlAction = QAction("Open &MySQL...", self)
         self.openMySqlAction.triggered.connect(lambda: self.openRemote('QMYSQL'))
 
-        self.newSqliteAction = QAction("&New SQLite example", self)
+        self.newSqliteAction = QAction("&New SQLite Example", self)
         self.newSqliteAction.setShortcut(QKeySequence.New)
         self.newSqliteAction.triggered.connect(self.createDb)
+
+        self.addTabAction = QAction("Add Query Tab", self)
+        self.addTabAction.setShortcut(QKeySequence.AddTab)
+        self.addTabAction.triggered.connect(self.queriesContainer.addTab)
 
         self.submitAction = QAction("&Submit", self)
         self.submitAction.setShortcut(QKeySequence.Save)
@@ -78,7 +83,7 @@ class MainUI(QMainWindow):
         self.refreshAction.setIcon(QApplication.style().standardIcon(QStyle.SP_BrowserReload))
         self.refreshAction.triggered.connect(self.refresh)
 
-        self.disconnectAction = QAction("&Close connection", self)
+        self.disconnectAction = QAction("&Close Connection", self)
         self.disconnectAction.setShortcut(QKeySequence.Close)
         self.disconnectAction.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogCancelButton))
         self.disconnectAction.triggered.connect(self.closeConnection)
@@ -104,6 +109,8 @@ class MainUI(QMainWindow):
         openMenu.addAction(self.openMySqlAction)
 
         newMenu.addAction(self.newSqliteAction)
+
+        fileMenu.addAction(self.addTabAction)
 
         fileMenu.addSeparator()
         fileMenu.addAction(self.submitAction)
@@ -158,12 +165,8 @@ class MainUI(QMainWindow):
 
                 if self.db.connection().isOpen():
                     self.prepared(filename)
-                    self.db.connection().exec_("create table students(ID int primary key, "
-                                               "name varchar(50), class varchar(50))")
-
-                    self.db.connection().exec_("insert into students values(1, 'Bugen', 'F1803302')")
-                    self.db.connection().exec_("insert into students values(2, 'Jack', 'F0101001')")
-                    self.db.connection().exec_("insert into students values(3, 'Midori', 'F0101002')")
+                    for line in EXAMPLE_SQLITE.split('\n'):
+                        self.db.connection().exec(line)
                     self.prepared(filename)
                     print('Done')
                 else:
